@@ -1,0 +1,9 @@
+{
+  "settings": {
+    "capture_interval_ms": 5000,
+    "ocr_lang": "ch",
+    "last_window_title": "",
+    "last_region": null,
+    "float_window_position": null
+  }
+}
