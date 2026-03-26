@@ -7,6 +7,7 @@ PaddleOCR 包裝器，提供數字辨識功能
 import logging
 import os
 import re
+import sys
 from dataclasses import dataclass
 
 import numpy as np
@@ -26,8 +27,13 @@ class ExpResult:
 class OcrEngine:
     """PaddleOCR 包裝器"""
 
-    def __init__(self):
+    def __init__(self, lang: str = "ch"):
         self._ocr = None
+        self._lang = lang
+
+    def preload(self):
+        """預先載入引擎（可在背景執行緒呼叫）"""
+        self._ensure_loaded()
 
     def _ensure_loaded(self):
         """懶載入 PaddleOCR（首次呼叫約 2-5 秒）"""
@@ -36,7 +42,7 @@ class OcrEngine:
         os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
         from paddleocr import PaddleOCR
         self._ocr = PaddleOCR(
-            lang="ch",
+            lang=self._lang,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,

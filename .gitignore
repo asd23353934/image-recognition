@@ -19,6 +19,9 @@ nul
 Thumbs.db
 Desktop.ini
 
+# Runtime data
+*.db
+
 # Misc artifacts
 .spectra/
 

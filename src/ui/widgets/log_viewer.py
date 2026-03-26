@@ -3,6 +3,7 @@
 顯示帶時間戳的日誌訊息
 """
 
+import html
 from datetime import datetime
 
 from PySide6.QtWidgets import QTextEdit
@@ -40,9 +41,10 @@ class LogViewer(QTextEdit):
             message: 日誌文字
         """
         timestamp = datetime.now().strftime("%H:%M:%S")
+        safe_message = html.escape(message)
         colored_line = (
             f'<span style="color:{AppTheme.TEXT_MUTED}">[{timestamp}]</span> '
-            f'<span style="color:{AppTheme.TEXT_PRIMARY}">{message}</span>'
+            f'<span style="color:{AppTheme.TEXT_PRIMARY}">{safe_message}</span>'
         )
         self.append(colored_line)
         self._line_count += 1

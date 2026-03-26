@@ -27,5 +27,8 @@ src/ui/     # PySide6 UI layer
 - `config.json` - User settings persistence
 - `src/core/ocr_engine.py` - PaddleOCR wrapper
 - `src/core/exp_calculator.py` - EXP calculation logic
+- `src/core/record_storage.py` - SQLite session/reading storage
 - `src/ui/pages/exp_monitor_page.py` - Main page
 - `src/ui/widgets/float_window.py` - Float window
+- `src/ui/widgets/exp_chart.py` - EXP line chart
+- `src/ui/dialogs/history_dialog.py` - History records viewer

@@ -1,33 +1,34 @@
 """
 主題系統 — PySide6 QSS 版本
 集中管理所有顏色、字型、尺寸等樣式設定，並提供 QSS 全域樣式表
-RPG 遊戲風格 — 金色邊框、深色卡片、楓之谷質感
+科技藍主題 — 深色背景、藍色強調
 """
 
 from PySide6.QtGui import QFont
 
 
 class AppTheme:
-    """應用程式主題常量 — RPG Gaming 風格"""
+    """應用程式主題常量 — 科技藍風格"""
 
     # ===== 背景色階層（由深到淺）=====
-    BG_DARKEST    = "#02040a"
-    BG_DEEP       = "#06090f"
-    BG_PRIMARY    = "#06090f"
-    BG_SECONDARY  = "#0d1117"
-    BG_TERTIARY   = "#1a2130"
-    BG_CARD       = "#131c2e"
-    BG_CARD_HOVER = "#1a2840"
+    BG_DARKEST    = "#020408"
+    BG_DEEP       = "#060a14"
+    BG_PRIMARY    = "#060a14"
+    BG_SECONDARY  = "#0d1525"
+    BG_TERTIARY   = "#162035"
+    BG_CARD       = "#0f1a2e"
+    BG_CARD_HOVER = "#162844"
 
-    # ===== 金色系統 (RPG 主色調) =====
-    GOLD_PRIMARY = "#d4a843"
-    GOLD_LIGHT   = "#f0d78c"
-    GOLD_DARK    = "#c9952a"
-    GOLD_MUTED   = "#8b7435"
+    # ===== 主色調（藍色系）=====
+    # 注意: GOLD_* 為歷史命名，實際色值為藍色系
+    GOLD_PRIMARY = "#3b82f6"   # 主藍色
+    GOLD_LIGHT   = "#93c5fd"   # 淺藍色
+    GOLD_DARK    = "#1d4ed8"   # 深藍色
+    GOLD_MUTED   = "#1e3a5f"   # 暗藍色
 
     # ===== 裝飾邊框 =====
-    BORDER_GOLD         = "#d4a843"
-    BORDER_GOLD_SUBTLE  = "#8b7435"
+    BORDER_GOLD         = "#3b82f6"
+    BORDER_GOLD_SUBTLE  = "#1e3a5f"
 
     # ===== 強調色 =====
     ACCENT_BLUE         = "#3b82f6"
@@ -42,7 +43,7 @@ class AppTheme:
     TEXT_PRIMARY   = "#f1f5f9"
     TEXT_SECONDARY = "#94a3b8"
     TEXT_MUTED     = "#64748b"
-    TEXT_GOLD      = "#f0d78c"
+    TEXT_GOLD      = "#93c5fd"
     TEXT_HIGHLIGHT = "#ffffff"
 
     # ===== 字型 =====
@@ -122,7 +123,7 @@ class AppTheme:
             color: {cls.TEXT_PRIMARY};
             border: 1px solid {cls.GOLD_MUTED};
             selection-background-color: {cls.GOLD_DARK};
-            selection-color: #000000;
+            selection-color: {cls.TEXT_HIGHLIGHT};
             outline: none;
         }}
 

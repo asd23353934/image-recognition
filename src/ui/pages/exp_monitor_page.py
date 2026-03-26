@@ -8,13 +8,14 @@ import threading
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QFrame, QGroupBox,
+    QComboBox, QFrame,
 )
 from PySide6.QtCore import Qt, QTimer, Signal, QThread, QObject
 
 from src.core.ocr_engine import OcrEngine, ExpResult
 from src.core.screen_capture import ScreenCapture
 from src.core.exp_calculator import ExpCalculator
+from src.core.record_storage import RecordStorage
 from src.core.window_enumerator import list_windows, get_window_rect, is_window_valid
 from src.ui.theme import AppTheme
 from src.ui.widgets.capture_preview import CapturePreview
@@ -30,21 +31,22 @@ class OcrWorker(QObject):
 
     result_ready = Signal(object, object, str)  # (PIL.Image, ExpResult|None, raw_text)
     error_occurred = Signal(str)
+    engine_loaded = Signal()  # OCR 引擎載入完成
+    trigger = Signal(object)  # 觸發 OCR（傳入已截圖的 PIL.Image）
 
-    def __init__(self, capture: ScreenCapture, ocr: OcrEngine):
+    def __init__(self, ocr: OcrEngine):
         super().__init__()
-        self.capture = capture
         self.ocr = ocr
-        self.bbox = None
         self._running = False
+        self.trigger.connect(self.do_ocr)
 
-    def do_capture(self):
-        """執行一次截圖 + OCR"""
-        if not self.bbox:
-            return
+    def do_ocr(self, img):
+        """執行 OCR（在工作者執行緒中）"""
         try:
-            img = self.capture.capture_region(self.bbox)
+            was_loaded = self.ocr.is_loaded()
             result, raw_text = self.ocr.recognize_exp_format(img)
+            if not was_loaded and self.ocr.is_loaded():
+                self.engine_loaded.emit()
             self.result_ready.emit(img, result, raw_text)
         except Exception as e:
             self.error_occurred.emit(str(e))
@@ -55,13 +57,16 @@ class ExpMonitorPage(QWidget):
 
     exp_updated = Signal(dict)  # 供浮動視窗使用
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, storage: RecordStorage | None = None,
+                 config_manager=None, ocr_engine: OcrEngine | None = None):
         super().__init__(parent)
 
         # 核心元件
-        self._ocr = OcrEngine()
+        self._ocr = ocr_engine or OcrEngine()
         self._capture = ScreenCapture()
         self._calculator = ExpCalculator()
+        self._storage = storage
+        self._config = config_manager
 
         # 狀態
         self._selected_hwnd = None
@@ -70,12 +75,13 @@ class ExpMonitorPage(QWidget):
         self._is_monitoring = False
         self._is_processing = False
 
-        # OCR 工作者執行緒
+        # OCR 工作者執行緒（mss 截圖在主執行緒，OCR 在工作者執行緒）
         self._worker_thread = QThread()
-        self._worker = OcrWorker(self._capture, self._ocr)
+        self._worker = OcrWorker(self._ocr)
         self._worker.moveToThread(self._worker_thread)
         self._worker.result_ready.connect(self._on_ocr_result)
         self._worker.error_occurred.connect(self._on_ocr_error)
+        self._worker.engine_loaded.connect(self._on_engine_loaded)
         self._worker_thread.start()
 
         # 監測計時器
@@ -89,6 +95,7 @@ class ExpMonitorPage(QWidget):
         self._overlay = None
 
         self._build_ui()
+        self._restore_settings()
 
     def _build_ui(self):
         """建構 UI"""
@@ -109,10 +116,11 @@ class ExpMonitorPage(QWidget):
         self._window_combo.setFixedHeight(28)
         select_row.addWidget(self._window_combo, 1)
 
-        refresh_btn = QPushButton("重新整理")
-        refresh_btn.setFixedHeight(28)
-        refresh_btn.clicked.connect(self._refresh_windows)
-        select_row.addWidget(refresh_btn)
+        original_show_popup = self._window_combo.showPopup
+        def _auto_refresh_popup():
+            self._refresh_windows()
+            original_show_popup()
+        self._window_combo.showPopup = _auto_refresh_popup
 
         self._region_btn = QPushButton("選取監測區域")
         self._region_btn.setFixedHeight(28)
@@ -139,23 +147,31 @@ class ExpMonitorPage(QWidget):
         self._preview = CapturePreview()
         main_layout.addWidget(self._preview)
 
+        # Loading 提示
+        self._loading_label = QLabel("正在載入辨識引擎，請稍候...")
+        self._loading_label.setStyleSheet(
+            f"color: {AppTheme.ACCENT_YELLOW}; font-size: 12px; font-weight: bold;"
+            f" background-color: rgba(251, 191, 36, 0.1);"
+            f" border: 1px solid {AppTheme.ACCENT_YELLOW};"
+            f" border-radius: 4px; padding: 6px 12px;"
+        )
+        self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._loading_label.hide()
+        main_layout.addWidget(self._loading_label)
+
         # 數據顯示區
-        data_group = QGroupBox("監測數據")
+        data_group = QFrame()
+        data_group.setObjectName("data_group")
         data_group.setStyleSheet(
-            f"QGroupBox {{"
-            f" color: {AppTheme.TEXT_GOLD}; font-size: 12px; font-weight: bold;"
+            f"QFrame#data_group {{"
+            f" background-color: {AppTheme.BG_SECONDARY};"
             f" border: 1px solid {AppTheme.GOLD_MUTED};"
-            f" border-radius: {AppTheme.CORNER_SM}px;"
-            f" padding-top: 16px; margin-top: 8px;"
-            f"}}"
-            f"QGroupBox::title {{"
-            f" subcontrol-origin: margin;"
-            f" subcontrol-position: top left;"
-            f" padding: 0 6px;"
+            f" border-radius: {AppTheme.CORNER_MD}px;"
             f"}}"
         )
         data_layout = QVBoxLayout(data_group)
         data_layout.setSpacing(6)
+        data_layout.setContentsMargins(12, 10, 12, 10)
 
         label_style = f"color: {AppTheme.TEXT_SECONDARY}; font-size: 12px;"
         value_style = f"color: {AppTheme.TEXT_HIGHLIGHT}; font-size: 16px; font-weight: bold;"
@@ -303,6 +319,31 @@ class ExpMonitorPage(QWidget):
         )
         btn_layout.addWidget(self._float_btn)
 
+        self._save_btn = QPushButton("保存紀錄")
+        self._save_btn.setFixedHeight(36)
+        self._save_btn.setEnabled(False)
+        self._save_btn.clicked.connect(self._on_save)
+        self._save_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {AppTheme.ACCENT_BLUE};"
+            f" color: #ffffff; border: 1px solid #2563eb;"
+            f" border-radius: 4px; font-weight: bold; font-size: 12px; }}"
+            f"QPushButton:hover {{ background-color: #2563eb; }}"
+            f"QPushButton:disabled {{ background-color: {AppTheme.BG_TERTIARY};"
+            f" color: {AppTheme.TEXT_MUTED}; border-color: {AppTheme.BG_TERTIARY}; }}"
+        )
+        btn_layout.addWidget(self._save_btn)
+
+        self._history_btn = QPushButton("查詢紀錄")
+        self._history_btn.setFixedHeight(36)
+        self._history_btn.clicked.connect(self._on_show_history)
+        self._history_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {AppTheme.ACCENT_BLUE};"
+            f" color: #ffffff; border: 1px solid #2563eb;"
+            f" border-radius: 4px; font-weight: bold; font-size: 12px; }}"
+            f"QPushButton:hover {{ background-color: #2563eb; }}"
+        )
+        btn_layout.addWidget(self._history_btn)
+
         main_layout.addLayout(btn_layout)
 
         # ===== 日誌區 =====
@@ -321,15 +362,67 @@ class ExpMonitorPage(QWidget):
         lbl.setStyleSheet(style)
         return lbl
 
+    # ===== 設定保存/還原 =====
+
+    def _restore_settings(self):
+        """從 config 還原上次選擇的視窗和區域"""
+        if not self._config:
+            return
+
+        saved_title = self._config.get_settings("last_window_title")
+        saved_region = self._config.get_settings("last_region")
+
+        if saved_title:
+            for i in range(self._window_combo.count()):
+                data = self._window_combo.itemData(i)
+                if data and data.get("title") == saved_title:
+                    self._window_combo.setCurrentIndex(i)
+                    break
+
+        if saved_region and self._selected_hwnd:
+            bbox = tuple(saved_region)
+            if len(bbox) == 4:
+                self._capture_bbox = bbox
+
+                self._start_btn.setEnabled(True)
+                self._log.append_log(
+                    f"已還原監測區域: ({bbox[0]}, {bbox[1]}) {bbox[2]}x{bbox[3]}"
+                )
+                try:
+                    img = self._capture.capture_region(self._capture_bbox)
+                    self._preview.set_image(img)
+                except Exception:
+                    pass
+
+    def _save_settings(self):
+        """保存當前視窗和區域到 config"""
+        if not self._config:
+            return
+        self._config.set_settings("last_window_title", self._selected_title or "")
+        if self._capture_bbox:
+            self._config.set_settings("last_region", list(self._capture_bbox))
+        else:
+            self._config.set_settings("last_region", None)
+
     # ===== 視窗選擇 =====
 
     def _refresh_windows(self):
         """重新列舉視窗"""
+        prev_hwnd = None
+        data = self._window_combo.currentData()
+        if data:
+            prev_hwnd = data["hwnd"]
+        self._window_combo.blockSignals(True)
         self._window_combo.clear()
         self._window_combo.addItem("-- 請選擇視窗 --", None)
         windows = list_windows()
-        for w in windows:
+        restore_index = 0
+        for i, w in enumerate(windows):
             self._window_combo.addItem(w["title"], w)
+            if prev_hwnd and w["hwnd"] == prev_hwnd:
+                restore_index = i + 1
+        self._window_combo.setCurrentIndex(restore_index)
+        self._window_combo.blockSignals(False)
 
     def _on_window_selected(self, index):
         """視窗選擇變更"""
@@ -339,6 +432,7 @@ class ExpMonitorPage(QWidget):
             self._selected_title = data["title"]
             self._region_btn.setEnabled(True)
             self._log.append_log(f"已選擇視窗: {self._selected_title}")
+            self._save_settings()
         else:
             self._selected_hwnd = None
             self._selected_title = None
@@ -356,6 +450,8 @@ class ExpMonitorPage(QWidget):
             return
 
         rect = get_window_rect(self._selected_hwnd)
+        if self._overlay is not None:
+            self._overlay.close()
         self._overlay = RegionOverlay(target_rect=rect)
         self._overlay.region_selected.connect(self._on_region_selected)
         self._overlay.cancelled.connect(self._on_region_cancelled)
@@ -364,7 +460,7 @@ class ExpMonitorPage(QWidget):
     def _on_region_selected(self, left, top, width, height):
         """區域選取完成"""
         self._capture_bbox = (left, top, width, height)
-        self._worker.bbox = self._capture_bbox
+
         self._start_btn.setEnabled(True)
         self._log.append_log(f"監測區域已設定: ({left}, {top}) {width}x{height}")
 
@@ -376,6 +472,7 @@ class ExpMonitorPage(QWidget):
             self._log.append_log(f"預覽截圖失敗: {e}")
 
         self._overlay = None
+        self._save_settings()
 
     def _on_region_cancelled(self):
         """區域選取取消"""
@@ -390,6 +487,7 @@ class ExpMonitorPage(QWidget):
             return
 
         if not self._ocr.is_loaded():
+            self._loading_label.show()
             self._log.append_log("正在載入辨識引擎，請稍候...")
 
         self._is_monitoring = True
@@ -405,6 +503,11 @@ class ExpMonitorPage(QWidget):
 
         # 立即執行第一次
         self._do_capture_cycle()
+
+    def _on_engine_loaded(self):
+        """OCR 引擎載入完成"""
+        self._loading_label.hide()
+        self._log.append_log("辨識引擎載入完成")
 
     def _on_pause(self):
         """暫停監測"""
@@ -433,8 +536,10 @@ class ExpMonitorPage(QWidget):
         self._ttl_label.setText("--")
         self._elapsed_label.setText("--")
         self._warning_label.hide()
+        self._loading_label.hide()
         self._preview.clear_image()
         self._float_window.reset_data()
+        self._save_btn.setEnabled(False)
 
         self._start_btn.setEnabled(bool(self._capture_bbox))
         self._pause_btn.setEnabled(False)
@@ -462,9 +567,23 @@ class ExpMonitorPage(QWidget):
         if not self._capture_bbox:
             return
 
+        # 檢查目標視窗是否仍然有效
+        if self._selected_hwnd and not is_window_valid(self._selected_hwnd):
+            self._log.append_log("目標視窗已關閉，自動暫停監測")
+            self._on_pause()
+            self._warning_label.setText("目標視窗已關閉，請重新選擇視窗")
+            self._warning_label.show()
+            self._float_window.show_warning("目標視窗已關閉")
+            return
+
         self._is_processing = True
-        # 透過 invokeMethod 在工作者執行緒中執行
-        QTimer.singleShot(0, self._worker.do_capture)
+        # 截圖在主執行緒（mss 需要 thread-local），OCR 在工作者執行緒
+        try:
+            img = self._capture.capture_region(self._capture_bbox)
+            self._worker.trigger.emit(img)
+        except Exception as e:
+            self._is_processing = False
+            self._on_ocr_error(str(e))
 
     def _on_ocr_result(self, img, result, raw_text):
         """OCR 結果回調（主執行緒）"""
@@ -477,17 +596,14 @@ class ExpMonitorPage(QWidget):
         if result is not None:
             # 格式正常，隱藏警告
             self._warning_label.hide()
+            self._float_window.show_warning("擷取正常")
 
-            # 異常偵測
-            anomaly = self._calculator.check_anomaly(result.exp_value, result.percentage)
-            if anomaly == "level_up":
-                self._log.append_log("偵測到升級! 數據已重置基準")
-            elif anomaly:
-                self._warning_label.setText(anomaly)
-                self._warning_label.show()
-                self._log.append_log(f"異常: {anomaly}")
+            # 加入讀數（自動偵測升級）
+            level_up = self._calculator.add_reading(result.exp_value, result.percentage)
+            if level_up:
+                self._log.append_log("偵測到升級! 持續累計中")
+                self._float_window.show_warning("偵測到升級!")
 
-            self._calculator.add_reading(result.exp_value, result.percentage)
             summary = self._calculator.get_summary()
 
             # 更新 UI
@@ -505,6 +621,8 @@ class ExpMonitorPage(QWidget):
                     hours = int(ttl) // 60
                     mins = int(ttl) % 60
                     self._ttl_label.setText(f"{hours} 小時 {mins} 分鐘")
+                elif ttl < 1:
+                    self._ttl_label.setText("少於 1 分鐘")
                 else:
                     self._ttl_label.setText(f"{ttl:.0f} 分鐘")
             else:
@@ -519,30 +637,75 @@ class ExpMonitorPage(QWidget):
             self._float_window.update_data(summary)
             self.exp_updated.emit(summary)
 
+            # 啟用按鈕
+            self._save_btn.setEnabled(len(self._calculator.readings) >= 2)
+
             self._log.append_log(
                 f"辨識: {result.exp_value:,}[{result.percentage:.2f}%]"
             )
         else:
             # 格式不符
             if raw_text:
-                self._warning_label.setText(f"格式異常: {raw_text}")
+                msg = f"格式異常: {raw_text}"
+                self._warning_label.setText(msg)
                 self._warning_label.show()
-                self._log.append_log(f"格式異常: {raw_text}")
+                self._float_window.show_warning(msg)
+                self._log.append_log(msg)
             else:
+                self._float_window.show_warning("無法辨識文字")
                 self._log.append_log("無法辨識文字")
 
     def _on_ocr_error(self, error_msg):
         """OCR 錯誤回調"""
         self._is_processing = False
-        self._log.append_log(f"辨識錯誤: {error_msg}")
+        msg = f"辨識錯誤: {error_msg}"
+        self._float_window.show_warning(msg)
+        self._log.append_log(msg)
+
+    # ===== 查詢紀錄 =====
+
+    def _on_show_history(self):
+        """開啟歷史紀錄對話框"""
+        if not self._storage:
+            return
+        from src.ui.dialogs.history_dialog import HistoryDialog
+        dialog = HistoryDialog(self._storage, self)
+        dialog.exec()
+
+    # ===== 保存紀錄 =====
+
+    def _on_save(self):
+        """保存當前監測紀錄"""
+        if not self._storage or len(self._calculator.readings) < 2:
+            return
+        try:
+            session_id = self._storage.save_session(
+                readings=self._calculator.readings,
+                window_title=self._selected_title or "",
+                level_up_count=self._calculator.level_up_count,
+            )
+            self._log.append_log(f"紀錄已保存 (ID: {session_id})")
+            app = self.window()
+            if hasattr(app, "toast_manager"):
+                app.toast_manager.show("紀錄已保存", "success")
+        except Exception as e:
+            self._log.append_log(f"保存失敗: {e}")
 
     # ===== 清理 =====
 
     def cleanup(self):
         """清理資源"""
+        self._save_settings()
         self._timer.stop()
+        self._is_monitoring = False
+
+        # 停止工作者執行緒
         self._worker_thread.quit()
-        self._worker_thread.wait(3000)
+        if not self._worker_thread.wait(5000):
+            # 超時強制終止
+            self._worker_thread.terminate()
+            self._worker_thread.wait(1000)
+
         self._capture.close()
         if self._float_window:
             self._float_window.close()

@@ -27,8 +27,9 @@ class FloatWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
-        self.setMinimumSize(200, 140)
-        self.resize(250, 175)
+        self.setMinimumSize(200, 160)
+        self.setMaximumSize(600, 500)
+        self.resize(250, 210)
 
         # 拖曳狀態
         self._dragging = False
@@ -115,6 +116,18 @@ class FloatWindow(QWidget):
         row_min.addStretch()
         layout.addLayout(row_min)
 
+        # 10 分鐘預估
+        row_10 = QHBoxLayout()
+        row_10.setSpacing(4)
+        lbl_10 = QLabel("10分鐘:")
+        lbl_10.setStyleSheet(label_style)
+        row_10.addWidget(lbl_10)
+        self.rate_10min_lbl = QLabel("--")
+        self.rate_10min_lbl.setStyleSheet(green_style)
+        row_10.addWidget(self.rate_10min_lbl)
+        row_10.addStretch()
+        layout.addLayout(row_10)
+
         # 60 分鐘預估
         row3 = QHBoxLayout()
         row3.setSpacing(4)
@@ -139,6 +152,15 @@ class FloatWindow(QWidget):
         row_ttl.addStretch()
         layout.addLayout(row_ttl)
 
+        # 底部警告提示行
+        self.warning_lbl = QLabel("")
+        self.warning_lbl.setStyleSheet(
+            f"color: {AppTheme.ACCENT_ORANGE}; font-size: 10px; font-weight: bold;"
+            f" padding: 2px 0 0 0;"
+        )
+        self.warning_lbl.setFixedHeight(16)
+        layout.addWidget(self.warning_lbl)
+
     # ===== 自繪圓角半透明背景 =====
 
     def paintEvent(self, event):
@@ -154,7 +176,7 @@ class FloatWindow(QWidget):
         # 半透明背景 (alpha ≈ 200/255 ≈ 78%)
         painter.fillPath(path, QBrush(QColor(6, 9, 15, 200)))
 
-        # 金色邊框
+        # 藍色邊框
         pen = QPen(QColor(AppTheme.GOLD_PRIMARY), 2)
         painter.setPen(pen)
         painter.drawPath(path)
@@ -181,6 +203,9 @@ class FloatWindow(QWidget):
         rate_min = summary.get("rate_per_min", 0)
         self.rate_min_lbl.setText(f"+{rate_min:,.0f}")
 
+        rate_10 = summary.get("rate_10min", 0)
+        self.rate_10min_lbl.setText(f"+{rate_10:,.0f}")
+
         rate_60 = summary.get("rate_60min", 0)
         self.rate_60min_lbl.setText(f"+{rate_60:,.0f}")
 
@@ -190,17 +215,40 @@ class FloatWindow(QWidget):
                 hours = int(ttl) // 60
                 mins = int(ttl) % 60
                 self.ttl_lbl.setText(f"{hours}小時{mins}分鐘")
+            elif ttl < 1:
+                self.ttl_lbl.setText("少於1分鐘")
             else:
                 self.ttl_lbl.setText(f"{ttl:.0f}分鐘")
         else:
             self.ttl_lbl.setText("--")
 
+    def show_warning(self, text: str):
+        """更新底部警告提示（空字串則清除）"""
+        self.warning_lbl.setText(text)
+        if text == "擷取正常":
+            self.warning_lbl.setStyleSheet(
+                f"color: {AppTheme.ACCENT_GREEN}; font-size: 10px; font-weight: bold;"
+                f" padding: 2px 0 0 0;"
+            )
+        elif text:
+            self.warning_lbl.setStyleSheet(
+                f"color: {AppTheme.ACCENT_ORANGE}; font-size: 10px; font-weight: bold;"
+                f" padding: 2px 0 0 0;"
+            )
+        else:
+            self.warning_lbl.setStyleSheet(
+                f"color: {AppTheme.ACCENT_ORANGE}; font-size: 10px; font-weight: bold;"
+                f" padding: 2px 0 0 0;"
+            )
+
     def reset_data(self):
         """重置所有顯示數據"""
         self.exp_value_lbl.setText("--")
         self.rate_min_lbl.setText("--")
+        self.rate_10min_lbl.setText("--")
         self.rate_60min_lbl.setText("--")
         self.ttl_lbl.setText("--")
+        self.warning_lbl.setText("")
 
     # ===== 邊緣偵測 =====
 

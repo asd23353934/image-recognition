@@ -17,6 +17,7 @@ from src.ui.helpers import resource_path, user_path
 from src.ui.theme import AppTheme
 from src.ui.config_manager import ConfigManager
 from src.ui.toast import ToastManager
+from src.core.record_storage import RecordStorage
 from src.ui.pages.exp_monitor_page import ExpMonitorPage
 
 
@@ -42,12 +43,12 @@ class _Dispatcher(QObject):
 class App(QMainWindow):
     """主應用程式視窗"""
 
-    def __init__(self):
+    def __init__(self, ocr_engine=None):
         super().__init__()
 
         self.setWindowTitle("Image Recognition")
         self.setMinimumSize(800, 600)
-        self.resize(900, 650)
+        self.resize(800, 600)
 
         # 設定視窗圖示
         try:
@@ -61,6 +62,8 @@ class App(QMainWindow):
         self._dispatcher = _Dispatcher(self)
         self.config_manager = ConfigManager(user_path("config.json"))
         self.toast_manager = ToastManager(self)
+        self.record_storage = RecordStorage(user_path("records.db"))
+        self._ocr_engine = ocr_engine
 
         # 建構 UI
         self._build_ui()
@@ -83,11 +86,11 @@ class App(QMainWindow):
         layout.addWidget(self._tabs)
 
         # 經驗值監測頁
-        self._exp_page = ExpMonitorPage(self)
+        self._exp_page = ExpMonitorPage(
+            self, storage=self.record_storage, config_manager=self.config_manager,
+            ocr_engine=self._ocr_engine,
+        )
         self._tabs.addTab(self._exp_page, "經驗值監測")
-
-        # 未來可在此新增更多頁面
-        # self._tabs.addTab(SomePage(), "其他功能")
 
     def after(self, ms: int, func):
         """執行緒安全的延遲執行"""
@@ -120,5 +123,6 @@ class App(QMainWindow):
     def closeEvent(self, event):
         """關閉視窗時清理資源"""
         self._exp_page.cleanup()
+        self.record_storage.close()
         self.config_manager.save()
         event.accept()

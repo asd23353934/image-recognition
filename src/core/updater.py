@@ -13,7 +13,7 @@ try:
 except ImportError:
     CURRENT_VERSION = "1.0.0"
 
-GITHUB_API_URL = "https://api.github.com/repos/asd23353934/skill_tracker/releases/latest"
+GITHUB_API_URL = "https://api.github.com/repos/asd23353934/image-recognition/releases/latest"
 
 try:
     import requests
@@ -70,9 +70,9 @@ class Updater:
                         archive_url = url
 
                 fallback_url = (
-                    f"https://github.com/asd23353934/skill_tracker"
+                    f"https://github.com/asd23353934/image-recognition"
                     f"/releases/download/v{latest_tag}"
-                    f"/skill_tracker_v{latest_tag}.zip"
+                    f"/image_recognition_v{latest_tag}.zip"
                 )
                 self.download_url = exe_url or archive_url or fallback_url
 
@@ -133,7 +133,7 @@ class Updater:
         if self.download_url:
             filename = os.path.basename(self.download_url)
         else:
-            filename = "exp_monitor_update.zip"
+            filename = "image_recognition_update.zip"
         return os.path.join(temp_dir, filename)
 
     def get_launcher_path(self):

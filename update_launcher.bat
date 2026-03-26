@@ -13,7 +13,7 @@ if "%APP_DIR%"=="" exit /b 1
 
 REM 從 APP_EXE 取得檔名（不含副檔名）
 for %%F in ("%APP_EXE%") do set "EXE_NAME=%%~nF"
-if "%EXE_NAME%"=="" set "EXE_NAME=exp_monitor"
+if "%EXE_NAME%"=="" set "EXE_NAME=image_recognition"
 
 echo %date% %time%  === Update started (BAT) === >> "%LOG_FILE%"
 echo %date% %time%  DownloadFile=%DOWNLOAD_FILE% >> "%LOG_FILE%"
