@@ -4,14 +4,17 @@ PaddleOCR 包裝器，提供數字辨識功能
 適配 PaddleOCR 3.4.0+ API (predict 方法 + OCRResult 物件)
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re
 import sys
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import numpy as np
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ class OcrEngine:
 
     def __init__(self, lang: str = "ch"):
         self._ocr = None
+        self._np = None  # numpy 延遲載入
         self._lang = lang
 
     def preload(self):
@@ -39,7 +43,8 @@ class OcrEngine:
         """懶載入 PaddleOCR（首次呼叫約 2-5 秒）"""
         if self._ocr is not None:
             return
-        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+        import numpy as np
+        self._np = np
         from paddleocr import PaddleOCR
         self._ocr = PaddleOCR(
             lang=self._lang,
@@ -60,7 +65,7 @@ class OcrEngine:
         """
         self._ensure_loaded()
         try:
-            img_array = np.array(image)
+            img_array = self._np.array(image)
             results = list(self._ocr.predict(img_array))
 
             if not results:
@@ -101,7 +106,7 @@ class OcrEngine:
         """
         self._ensure_loaded()
         try:
-            img_array = np.array(image)
+            img_array = self._np.array(image)
             results = list(self._ocr.predict(img_array))
 
             if not results:
@@ -126,7 +131,7 @@ class OcrEngine:
         """
         self._ensure_loaded()
         try:
-            img_array = np.array(image)
+            img_array = self._np.array(image)
             results = list(self._ocr.predict(img_array))
 
             if not results:

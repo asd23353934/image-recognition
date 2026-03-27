@@ -88,14 +88,21 @@ class ExpMonitorPage(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._do_capture_cycle)
 
-        # 浮動視窗
-        self._float_window = FloatWindow()
+        # 浮動視窗（延遲建立）
+        self.__float_window = None
 
         # 遮罩參考
         self._overlay = None
 
         self._build_ui()
         self._restore_settings()
+
+    @property
+    def _float_window(self):
+        """延遲建立 FloatWindow（首次存取時才建立）"""
+        if self.__float_window is None:
+            self.__float_window = FloatWindow()
+        return self.__float_window
 
     def _build_ui(self):
         """建構 UI"""
@@ -707,5 +714,5 @@ class ExpMonitorPage(QWidget):
             self._worker_thread.wait(1000)
 
         self._capture.close()
-        if self._float_window:
-            self._float_window.close()
+        if self.__float_window:
+            self.__float_window.close()

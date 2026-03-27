@@ -30,7 +30,12 @@ pyinstaller --noconfirm --clean ^
 echo.
 if errorlevel 1 (
     echo Build FAILED!
-) else (
-    echo Build SUCCESS! Output in dist/image_recognition/
+    pause
+    exit /b 1
 )
+
+echo Build SUCCESS!
+echo.
+
+python zip_release.py
 pause

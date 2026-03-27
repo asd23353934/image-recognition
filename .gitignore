@@ -27,3 +27,4 @@ Desktop.ini
 
 # PaddleOCR models cache
 .paddleocr/
+openspec/.vector-search.db*
